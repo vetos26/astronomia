@@ -175,7 +175,7 @@ class SoundManager {
                 delay(samples.size * 1000L / sampleRate + 50)
                 track.release()
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {}
     }
 
     fun release() {

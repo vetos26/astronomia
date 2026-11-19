@@ -149,7 +149,7 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
         soundManager.stopMusic()
         try {
             gameThread?.join()
-        } catch (_: InterruptedException) {}
+        } catch (e: InterruptedException) {}
     }
 
     override fun run() {
@@ -164,7 +164,7 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
             if (sleep > 0) {
                 try {
                     Thread.sleep(sleep)
-                } catch (_: InterruptedException) {}
+                } catch (e: InterruptedException) {}
             }
         }
     }
