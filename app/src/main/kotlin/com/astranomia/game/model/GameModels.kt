@@ -9,12 +9,28 @@ data class Crop(
     var isStolen: Boolean = false
 )
 
+data class CornTile(
+    val col: Int,
+    val row: Int,
+    var isHarvested: Boolean = false
+)
+
+data class CornParticle(
+    var x: Float,
+    var y: Float,
+    var vx: Float,
+    var vy: Float,
+    var rotation: Float = 0f,
+    var vRot: Float = 0f,
+    var life: Int = 35
+)
+
 data class Combine(
     var x: Float,
     var y: Float,
-    var angle: Float = 0f,
+    var angle: Float = (-Math.PI / 2).toFloat(),
     var speed: Float = 0f,
-    var maxSpeed: Float = 5.5f,
+    var maxSpeed: Float = 4.8f,
     var hp: Float = 100f,
     var maxHp: Float = 100f,
     var ammo: Int = 6,
@@ -24,12 +40,13 @@ data class Combine(
     var superCharge: Float = 0f, // 0 to 100%
     var isNitro: Boolean = false,
     var nitroTime: Int = 0,
-    var reelAngle: Float = 0f
+    var reelAngle: Float = 0f,
+    var collectedCorn: Int = 0
 ) {
     fun reset(startX: Float, startY: Float) {
         x = startX
         y = startY
-        angle = 0f
+        angle = (-Math.PI / 2).toFloat()
         speed = 0f
         hp = 100f
         ammo = 6
@@ -37,6 +54,7 @@ data class Combine(
         superCharge = 0f
         isNitro = false
         nitroTime = 0
+        collectedCorn = 0
     }
 }
 

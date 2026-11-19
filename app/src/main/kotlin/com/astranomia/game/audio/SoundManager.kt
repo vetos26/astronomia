@@ -127,6 +127,37 @@ class SoundManager {
         }
     }
 
+    fun playHorn() {
+        if (!isSoundEnabled || audioTrack == null) return
+        scope.launch {
+            try {
+                playDualTone(370.0, 440.0, 320)
+            } catch (t: Throwable) {}
+        }
+    }
+
+    fun playHarvestCrop() {
+        if (!isSoundEnabled || audioTrack == null) return
+        scope.launch {
+            try {
+                playNoise(35)
+                playTone(520.0, 30)
+            } catch (t: Throwable) {}
+        }
+    }
+
+    private fun playDualTone(freq1: Double, freq2: Double, durationMs: Int) {
+        val count = (sampleRate * (durationMs / 1000.0)).toInt()
+        val samples = ShortArray(count)
+        for (i in 0 until count) {
+            val t = i.toDouble() / sampleRate
+            val decay = 1.0 - (i.toDouble() / count) * 0.15
+            val wave = (sin(2.0 * Math.PI * freq1 * t) + sin(2.0 * Math.PI * freq2 * t)) * 0.5 * decay
+            samples[i] = (wave * Short.MAX_VALUE * 0.45).toInt().toShort()
+        }
+        writeAudio(samples)
+    }
+
     fun playShotgun() {
         if (!isSoundEnabled || audioTrack == null) return
         scope.launch {
