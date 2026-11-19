@@ -32,7 +32,9 @@
   * Верхний левый HUD: кнопка меню, значок комбайна, шкала HP и счёт над ней.
 * **Синтезатор звука на Android:** [`SoundManager.kt`](./app/src/main/kotlin/com/astranomia/game/audio/SoundManager.kt) (тема «Astronomia» в меню, Агро-Фонк с 808-м басом и ковбеллами в игре).
 * **Тактильная отдача (Haptics):** [`HapticManager.kt`](./app/src/main/kotlin/com/astranomia/game/haptics/HapticManager.kt) (вибрация при давке пришельцев и дрифте).
-* **Сборка проекта:** Откройте корень репозитория в **Android Studio** и запустите на эмуляторе или Android-смартфоне (`./gradlew assembleDebug`).
+* **Сборка проекта:**
+  * **Автоматически на GitHub:** Настроен GitHub Actions workflow [`.github/workflows/build-apk.yml`](./.github/workflows/build-apk.yml). При каждом пуше или ручном запуске в GitHub Actions автоматически собирается APK (`app-debug.apk`) и прикрепляется в артефакты сборки.
+  * **Локально в Android Studio:** Откройте корень репозитория в **Android Studio** и запустите на эмуляторе или Android-смартфоне (`./gradlew assembleDebug`).
 
 ---
 
