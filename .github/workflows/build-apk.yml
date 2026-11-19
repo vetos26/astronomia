@@ -46,10 +46,8 @@ jobs:
       - name: Check Build Result and Annotate
         run: |
           if [ ! -f app/build/outputs/apk/debug/app-debug.apk ]; then
-            FIRST_ERR=$(grep -m 1 -E "e: |FAILURE: " gradle-build.log | tr '\n' ' ')
-            echo "::error title=Compiler Error::$FIRST_ERR"
-            echo "=== Gradle Log Errors ==="
-            grep -E "^e: |FAILURE:|What went wrong:" gradle-build.log -A 4 | head -n 30
+            DETAILS=$(grep -A 10 "* What went wrong:" gradle-build.log | tr '\n' ' ' | head -c 300)
+            echo "::error title=Gradle Error::$DETAILS"
             exit 1
           fi
 
