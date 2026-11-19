@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>🚜 ASTRANOMIA: Битва за Урожай на ДОН-1500А</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800;900&family=Russo+One&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <div id="game-container">
+    <!-- 2D Cartoon Game Canvas -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- ========================================== -->
+    <!-- HUD: TOP LEFT (Menu, Score, Combine Icon & HP)-->
+    <!-- ========================================== -->
+    <div class="hud-top-left">
+      <!-- Menu Button -->
+      <button id="hud-menu-btn" class="menu-btn" title="Меню игры">
+        <span>⚙️</span> МЕНЮ
+      </button>
+
+      <!-- Score displayed STRICTLY ABOVE the HP bar -->
+      <div class="hud-score-row">
+        <div id="hud-score" class="hud-score-badge">🏆 ОЧКИ: 0</div>
+      </div>
+
+      <!-- Combine Icon next to Health Bar -->
+      <div class="hud-hp-row">
+        <span class="combine-hud-icon" title="Красный комбайн ДОН-1500А">🚜</span>
+        <div class="hp-bar-outer">
+          <div id="hp-bar-fill" class="hp-bar-inner"></div>
+          <span id="hp-text" class="hp-text">100% HP</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- HUD: TOP RIGHT (Crop Health & Ammo)        -->
+    <!-- ========================================== -->
+    <div class="hud-top-right">
+      <div class="crop-hud-badge">
+        🌾 УРОЖАЙ: <span id="crop-percent">100</span>%
+      </div>
+      <div class="crop-bar-outer">
+        <div id="crop-bar-fill" class="crop-bar-inner"></div>
+      </div>
+      <div id="ammo-badge" class="ammo-badge">🥔 ЗАРЯД: 6 / 6</div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- CONTROLS: LEFT VIRTUAL D-PAD (Крестовина)  -->
+    <!-- ========================================== -->
+    <div class="controls-left-dpad" id="virtual-dpad">
+      <button class="dpad-btn dpad-up" id="btn-dpad-up" data-dir="up">▲</button>
+      <button class="dpad-btn dpad-left" id="btn-dpad-left" data-dir="left">◄</button>
+      <div class="dpad-center"></div>
+      <button class="dpad-btn dpad-right" id="btn-dpad-right" data-dir="right">►</button>
+      <button class="dpad-btn dpad-down" id="btn-dpad-down" data-dir="down">▼</button>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- CONTROLS: RIGHT ACTION BUTTONS             -->
+    <!-- ========================================== -->
+    <div class="controls-right-actions">
+      <!-- Reload & Super Column -->
+      <div class="action-column">
+        <!-- Super Weapon (Нитро-Астрономия) -->
+        <button id="btn-super-weapon" class="btn-super" title="Супер Оружие: Нитро-Астрономия">
+          <span class="btn-icon">⚡</span>
+          <span>СУПЕР<br><small id="super-charge-label">0%</small></span>
+        </button>
+
+        <!-- Reload Button -->
+        <button id="btn-reload" class="btn-reload" title="Перезарядка орудия">
+          <span class="btn-icon">🔄</span>
+          <span>ПЕРЕЗАРЯДКА</span>
+        </button>
+      </div>
+
+      <!-- Fire Button (Main) -->
+      <button id="btn-fire" class="btn-fire" title="Огонь по летающим тарелкам">
+        <span class="btn-icon">🔥</span>
+        <span>ОГОНЬ</span>
+      </button>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: MAIN MENU                           -->
+    <!-- ========================================== -->
+    <div id="menu-modal" class="modal-screen">
+      <div class="modal-card">
+        <h1 class="modal-title">ASTRANOMIA</h1>
+        <h2 class="modal-subtitle">ЖАТВА НА КОМБАЙНЕ «ДОН-1500А»</h2>
+        <p class="modal-desc">
+          Пришельцы на летающих тарелках воруют овощи с поля!<br>
+          Садись за руль красного комбайна «ДОН-1500А», дави пехоту жаткой на земле и сбивай тарелки из зенитки!
+        </p>
+
+        <button id="start-game-btn" class="primary-btn">
+          <span>▶</span> НАЧАТЬ ЖАТВУ
+        </button>
+        <button id="toggle-sound-btn" class="secondary-btn">
+          <span>🔊</span> ЗВУК: ВКЛЮЧЕН
+        </button>
+
+        <div class="controls-hint">
+          🎮 <strong>Управление:</strong><br>
+          • <strong>Сенсор:</strong> Крестовина слева (▲, ▼, ◄, ►), кнопки Огонь, Перезарядка, Супер оружие справа.<br>
+          • <strong>Клавиатура:</strong> W/A/S/D или Стрелки — комбайн, Пробел / ЛКМ — огонь, R — перезарядка, Shift — Нитро-Астрономия!
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: PAUSE                               -->
+    <!-- ========================================== -->
+    <div id="pause-modal" class="modal-screen hidden">
+      <div class="modal-card">
+        <h2 class="modal-title">ПАУЗА</h2>
+        <p class="modal-desc">Комбайн заглушен. Овощи ждут спасения!</p>
+        <button id="resume-game-btn" class="primary-btn">
+          <span>▶</span> ПРОДОЛЖИТЬ
+        </button>
+        <button id="restart-game-btn" class="secondary-btn">
+          <span>🔁</span> НАЧАТЬ ЗАНОВО
+        </button>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: GAME OVER / VICTORY                 -->
+    <!-- ========================================== -->
+    <div id="gameover-modal" class="modal-screen hidden">
+      <div class="modal-card">
+        <h2 id="gameover-title" class="modal-title">ЖАТВА ОКОНЧЕНА</h2>
+        <p id="gameover-desc" class="modal-desc">Результаты битвы за урожай:</p>
+
+        <div class="stats-grid">
+          <div class="stat-box">
+            <span id="stat-score" class="stat-val">0</span>
+            <span class="stat-lbl">ОЧКИ</span>
+          </div>
+          <div class="stat-box">
+            <span id="stat-aliens" class="stat-val">0</span>
+            <span class="stat-lbl">ПРИШЕЛЬЦЕВ</span>
+          </div>
+          <div class="stat-box">
+            <span id="stat-ufos" class="stat-val">0</span>
+            <span class="stat-lbl">ТАРЕЛОК</span>
+          </div>
+        </div>
+
+        <button id="retry-game-btn" class="primary-btn">
+          <span>🔁</span> ЕЩЁ ОДИН ЗАЕЗД
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="audio.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
