@@ -9,17 +9,16 @@ import kotlin.math.sin
 
 /**
  * Procedural Audio Synthesizer for Android:
- * - Single continuous AudioTrack stream (zero track leakage, crash-proof)
- * - Plays Astronomia theme in Menu
- * - Plays Agro-Phonk bass & cowbells in-game
- * - Sound effects for Combine, Splat, Cannon
+ * - Single persistent AudioTrack stream with WRITE_NON_BLOCKING (zero audio deadlocks)
+ * - Astronomia theme in Menu & Agro-Phonk bass/cowbells in game
+ * - Sound effects for Combine, Corn harvest, Alien splat, Klaxon horn
  */
 class SoundManager {
 
-    var isSoundEnabled: Boolean = true
+    @Volatile var isSoundEnabled: Boolean = true
 
     private val sampleRate = 22050
-    private var audioTrack: AudioTrack? = null
+    @Volatile private var audioTrack: AudioTrack? = null
 
     private val coroutineExceptionHandler = CoroutineExceptionHandler { _, throwable ->
         Log.e("SoundManager", "Audio coroutine error", throwable)
@@ -27,6 +26,8 @@ class SoundManager {
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob() + coroutineExceptionHandler)
     private var musicJob: Job? = null
+
+    @Volatile private var lastHarvestSoundTime = 0L
 
     init {
         try {
@@ -75,9 +76,9 @@ class SoundManager {
                     587.33, 587.33, 587.33, 587.33,
                     523.25, 523.25, 466.16, 392.0
                 )
-                while (isActive) {
+                while (isActive && isSoundEnabled) {
                     for (freq in notes) {
-                        if (!isActive) break
+                        if (!isActive || !isSoundEnabled) break
                         playTone(freq, 110)
                         delay(125)
                     }
@@ -94,20 +95,20 @@ class SoundManager {
         if (!isSoundEnabled || audioTrack == null) return
         musicJob = scope.launch {
             try {
-                while (isActive) {
+                while (isActive && isSoundEnabled) {
                     // Agro-Phonk rhythm (808 Sub-bass kick + Cowbell stabs)
-                    playSubBass(110.0, 40.0, 130)
-                    playCowbell(587.33, 70)
+                    playSubBass(110.0, 40.0, 120)
+                    playCowbell(587.33, 60)
                     delay(200)
-                    if (!isActive) break
-                    playCowbell(698.46, 70)
+                    if (!isActive || !isSoundEnabled) break
+                    playCowbell(698.46, 60)
                     delay(200)
-                    if (!isActive) break
-                    playSubBass(120.0, 45.0, 130)
-                    playCowbell(880.0, 70)
+                    if (!isActive || !isSoundEnabled) break
+                    playSubBass(120.0, 45.0, 120)
+                    playCowbell(880.0, 60)
                     delay(200)
-                    if (!isActive) break
-                    playCowbell(783.99, 70)
+                    if (!isActive || !isSoundEnabled) break
+                    playCowbell(783.99, 60)
                     delay(200)
                 }
             } catch (t: Throwable) {
@@ -121,7 +122,6 @@ class SoundManager {
             musicJob?.cancel()
             musicJob = null
             audioTrack?.pause()
-            audioTrack?.flush()
         } catch (t: Throwable) {
             Log.e("SoundManager", "stopMusic error", t)
         }
@@ -131,39 +131,30 @@ class SoundManager {
         if (!isSoundEnabled || audioTrack == null) return
         scope.launch {
             try {
-                playDualTone(370.0, 440.0, 320)
+                playDualTone(370.0, 440.0, 280)
             } catch (t: Throwable) {}
         }
     }
 
     fun playHarvestCrop() {
         if (!isSoundEnabled || audioTrack == null) return
+        val now = System.currentTimeMillis()
+        if (now - lastHarvestSoundTime < 80) return
+        lastHarvestSoundTime = now
         scope.launch {
             try {
-                playNoise(35)
-                playTone(520.0, 30)
+                playNoise(30)
+                playTone(520.0, 25)
             } catch (t: Throwable) {}
         }
-    }
-
-    private fun playDualTone(freq1: Double, freq2: Double, durationMs: Int) {
-        val count = (sampleRate * (durationMs / 1000.0)).toInt()
-        val samples = ShortArray(count)
-        for (i in 0 until count) {
-            val t = i.toDouble() / sampleRate
-            val decay = 1.0 - (i.toDouble() / count) * 0.15
-            val wave = (sin(2.0 * Math.PI * freq1 * t) + sin(2.0 * Math.PI * freq2 * t)) * 0.5 * decay
-            samples[i] = (wave * Short.MAX_VALUE * 0.45).toInt().toShort()
-        }
-        writeAudio(samples)
     }
 
     fun playShotgun() {
         if (!isSoundEnabled || audioTrack == null) return
         scope.launch {
             try {
-                playNoise(80)
-                playSubBass(140.0, 30.0, 140)
+                playNoise(70)
+                playSubBass(140.0, 30.0, 120)
             } catch (t: Throwable) {}
         }
     }
@@ -172,8 +163,8 @@ class SoundManager {
         if (!isSoundEnabled || audioTrack == null) return
         scope.launch {
             try {
-                playTone(280.0, 35)
-                playTone(90.0, 40)
+                playTone(280.0, 30)
+                playTone(90.0, 35)
             } catch (t: Throwable) {}
         }
     }
@@ -182,8 +173,8 @@ class SoundManager {
         if (!isSoundEnabled || audioTrack == null) return
         scope.launch {
             try {
-                playSubBass(160.0, 25.0, 300)
-                playNoise(200)
+                playSubBass(160.0, 25.0, 250)
+                playNoise(180)
             } catch (t: Throwable) {}
         }
     }
@@ -194,10 +185,10 @@ class SoundManager {
             try {
                 val stinger = doubleArrayOf(392.0, 587.33, 523.25, 466.16, 783.99)
                 for (f in stinger) {
-                    playTone(f, 50)
-                    delay(55)
+                    playTone(f, 45)
+                    delay(50)
                 }
-                playSubBass(180.0, 30.0, 400)
+                playSubBass(180.0, 30.0, 300)
             } catch (t: Throwable) {}
         }
     }
@@ -209,6 +200,18 @@ class SoundManager {
             val t = i.toDouble() / sampleRate
             val decay = 1.0 - (i.toDouble() / count)
             val wave = sin(2.0 * Math.PI * freq * t) * decay
+            samples[i] = (wave * Short.MAX_VALUE * 0.35).toInt().toShort()
+        }
+        writeAudio(samples)
+    }
+
+    private fun playDualTone(freq1: Double, freq2: Double, durationMs: Int) {
+        val count = (sampleRate * (durationMs / 1000.0)).toInt()
+        val samples = ShortArray(count)
+        for (i in 0 until count) {
+            val t = i.toDouble() / sampleRate
+            val decay = 1.0 - (i.toDouble() / count) * 0.15
+            val wave = (sin(2.0 * Math.PI * freq1 * t) + sin(2.0 * Math.PI * freq2 * t)) * 0.5 * decay
             samples[i] = (wave * Short.MAX_VALUE * 0.4).toInt().toShort()
         }
         writeAudio(samples)
@@ -223,7 +226,7 @@ class SoundManager {
             val t = i.toDouble() / sampleRate
             val decay = (1.0 - progress)
             val wave = sin(2.0 * Math.PI * curFreq * t) * decay
-            samples[i] = (wave * Short.MAX_VALUE * 0.6).toInt().toShort()
+            samples[i] = (wave * Short.MAX_VALUE * 0.5).toInt().toShort()
         }
         writeAudio(samples)
     }
@@ -236,7 +239,7 @@ class SoundManager {
             val decay = 1.0 - (i.toDouble() / count)
             val wave1 = if (sin(2.0 * Math.PI * freq * t) > 0) 1.0 else -1.0
             val wave2 = if (sin(2.0 * Math.PI * (freq * 1.48) * t) > 0) 0.7 else -0.7
-            samples[i] = ((wave1 + wave2) * 0.5 * decay * Short.MAX_VALUE * 0.35).toInt().toShort()
+            samples[i] = ((wave1 + wave2) * 0.5 * decay * Short.MAX_VALUE * 0.3).toInt().toShort()
         }
         writeAudio(samples)
     }
@@ -247,7 +250,7 @@ class SoundManager {
         for (i in 0 until count) {
             val decay = 1.0 - (i.toDouble() / count)
             val noise = (Math.random() * 2.0 - 1.0) * decay
-            samples[i] = (noise * Short.MAX_VALUE * 0.4).toInt().toShort()
+            samples[i] = (noise * Short.MAX_VALUE * 0.35).toInt().toShort()
         }
         writeAudio(samples)
     }
@@ -260,7 +263,7 @@ class SoundManager {
             if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
                 track.play()
             }
-            track.write(samples, 0, samples.size)
+            track.write(samples, 0, samples.size, AudioTrack.WRITE_NON_BLOCKING)
         } catch (t: Throwable) {
             Log.e("SoundManager", "writeAudio error", t)
         }

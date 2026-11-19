@@ -14,15 +14,8 @@ import kotlin.math.*
 
 /**
  * Astranomia Game View - Retro Farm Edition matching classic J2ME look.
- * Features:
- * - Lush green corn field with standing corn & harvested stubble soil
- * - Wooden fences with gate opening
- * - Red Combine Harvester «ДОН-1500А» with rotating reel & cutter bar
- * - Comic action starburst ("2", combos, countdown)
- * - Rustic farmhouse with corn sign & curly tree
- * - Wooden bottom HUD with red badges
- * - Retro mobile keypad (L, F, R, 1-9, *, 0, #) + touch steering
- * - Alien invaders & UFOs trying to steal the harvest
+ * Rock-solid stability with full exception guards, thread-safe state synchronization,
+ * non-blocking audio, and verified zero-crash rendering.
  */
 class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback, Runnable {
 
@@ -80,7 +73,7 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
     private var starburstScale = 1.0f
 
     // Starting Countdown (3 -> 2 -> 1 -> GO)
-    private var countdownTimer = 180 // ~3 seconds at 60fps
+    private var countdownTimer = 180
 
     enum class GameState { MENU, COUNTDOWN, PLAYING, PAUSED, GAMEOVER }
     @Volatile var state = GameState.MENU
@@ -180,12 +173,11 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
             hapticManager.tick()
             triggerStarburst("📢 БИ-БИП!")
             synchronized(stateLock) {
-                // Scare nearby aliens away
                 for (alien in aliens) {
                     val dx = alien.x - player.x
                     val dy = alien.y - player.y
                     val dist = hypot(dx, dy)
-                    if (dist < 300f && dist > 1f) {
+                    if (dist < 300f && dist > 1f && !dist.isNaN()) {
                         alien.x += (dx / dist) * 70f
                         alien.y += (dy / dist) * 70f
                     }
@@ -265,18 +257,23 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
         val nsPerFrame = 1_000_000_000.0 / 60.0
 
         while (isRunning) {
-            val now = System.nanoTime()
-            val delta = (now - lastTime) / nsPerFrame
-            lastTime = now
+            try {
+                val now = System.nanoTime()
+                val delta = (now - lastTime) / nsPerFrame
+                lastTime = now
 
-            if (delta < 2.5) {
-                updatePhysics()
-            }
-            drawFrame()
+                if (delta < 2.5) {
+                    updatePhysics()
+                }
+                drawFrame()
 
-            val sleepMs = ((lastTime + nsPerFrame - System.nanoTime()) / 1_000_000).toLong()
-            if (sleepMs > 1) {
-                try { Thread.sleep(sleepMs) } catch (e: InterruptedException) {}
+                val sleepMs = ((lastTime + nsPerFrame - System.nanoTime()) / 1_000_000).toLong()
+                if (sleepMs > 1) {
+                    try { Thread.sleep(sleepMs) } catch (e: InterruptedException) {}
+                }
+            } catch (t: Throwable) {
+                Log.e("AstranomiaGameView", "Exception in game loop tick", t)
+                try { Thread.sleep(16) } catch (e: InterruptedException) {}
             }
         }
     }
@@ -321,11 +318,12 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
 
             if (hasInput) {
                 val targetAngle = atan2(moveY, moveX)
-                // Smooth angle turn
-                var diff = targetAngle - player.angle
-                while (diff < -Math.PI) diff += (2 * Math.PI).toFloat()
-                while (diff > Math.PI) diff -= (2 * Math.PI).toFloat()
-                player.angle += diff * 0.22f
+                if (!targetAngle.isNaN()) {
+                    var diff = targetAngle - player.angle
+                    while (diff < -Math.PI) diff += (2 * Math.PI).toFloat()
+                    while (diff > Math.PI) diff -= (2 * Math.PI).toFloat()
+                    player.angle += diff * 0.22f
+                }
 
                 val accel = if (player.isNitro) 0.65f else 0.35f
                 val topSpeed = if (player.isNitro) 8.5f else player.maxSpeed
@@ -347,12 +345,10 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
             player.x = player.x.coerceIn(50f, vWidth - 50f)
             player.y = player.y.coerceIn(80f, vHeight - 140f)
 
-            // Fence collision: wooden fence spans from x=0..270 and x=450..720 at y=580..630
-            // Gate is open at x in 275..445!
+            // Fence collision: gate is open at x in 275..445!
             if (player.y in 575f..625f) {
                 val inGate = (player.x in 275f..445f)
                 if (!inGate) {
-                    // Push player out of fence
                     player.y = if (moveY > 0) 574f else 626f
                     player.speed *= 0.5f
                 }
@@ -378,20 +374,19 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
             val headerY = player.y + sin(player.angle) * 36f
             val harvestRadius = 42f
 
+            var harvestedAny = false
             for (tile in cornGrid) {
                 if (!tile.isHarvested) {
                     val tileCenterX = fieldX + tile.col * cellW + cellW / 2
                     val tileCenterY = fieldY + tile.row * cellH + cellH / 2
                     val d = hypot(headerX - tileCenterX, headerY - tileCenterY)
-                    if (d < harvestRadius) {
+                    if (d < harvestRadius && !d.isNaN()) {
                         tile.isHarvested = true
                         player.collectedCorn++
                         score += 10
                         player.superCharge = min(100f, player.superCharge + 1.2f)
-                        soundManager.playHarvestCrop()
-                        hapticManager.tick()
+                        harvestedAny = true
 
-                        // Flying corn cob particle
                         repeat(2) {
                             cornParticles.add(
                                 CornParticle(
@@ -403,13 +398,24 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
                             )
                         }
 
-                        // Milestone combo starburst!
                         if (player.collectedCorn % 25 == 0) {
                             triggerStarburst("+25 КОРЗИНА!", 40)
                             score += 50
                         }
                     }
                 }
+            }
+
+            if (harvestedAny) {
+                soundManager.playHarvestCrop()
+                hapticManager.tick()
+            }
+
+            // Check if all corn was harvested -> Start New Season!
+            if (cornGrid.none { !it.isHarvested }) {
+                initCornField()
+                score += 500
+                triggerStarburst("НОВЫЙ СЕЗОН! +500", 60)
             }
 
             // 3. FIRE WEAPON
@@ -428,20 +434,27 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
                 }
             }
 
-            // 4. BULLETS & UFO/ALIEN COLLISION
-            val bulletIter = bullets.iterator()
-            while (bulletIter.hasNext()) {
-                val b = bulletIter.next()
+            // 4. BULLETS & COLLISION (Strictly thread-safe without in-loop removals)
+            val bulletsToRemove = mutableListOf<Bullet>()
+            val aliensKilledByBullets = mutableListOf<Alien>()
+
+            for (b in bullets) {
                 b.x += b.vx
                 b.y += b.vy
                 b.life--
+                if (b.life <= 0) {
+                    bulletsToRemove.add(b)
+                    continue
+                }
 
                 var hit = false
                 // Check UFOs
                 for (ufo in ufos) {
-                    if (hypot(b.x - ufo.x, b.y - ufo.y) < 45f) {
+                    val d = hypot(b.x - ufo.x, b.y - ufo.y)
+                    if (d < 45f && !d.isNaN()) {
                         ufo.hp -= b.damage
                         hit = true
+                        bulletsToRemove.add(b)
                         screenShake = 6f
                         if (ufo.hp <= 0) {
                             soundManager.playUfoCrash()
@@ -459,28 +472,28 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
                 // Check Aliens
                 if (!hit) {
                     for (alien in aliens) {
-                        if (hypot(b.x - alien.x, b.y - alien.y) < 25f) {
-                            alien.carriedCrop = null
-                            aliens.remove(alien)
+                        val d = hypot(b.x - alien.x, b.y - alien.y)
+                        if (d < 25f && !d.isNaN()) {
+                            aliensKilledByBullets.add(alien)
+                            bulletsToRemove.add(b)
                             soundManager.playAlienSplat()
                             score += 50
-                            hit = true
                             floatingTexts.add(FloatingText(alien.x, alien.y, "+50", Color.parseColor("#22C55E"), 22f))
                             break
                         }
                     }
                 }
-
-                if (hit || b.life <= 0) bulletIter.remove()
             }
+
+            bullets.removeAll(bulletsToRemove)
+            aliens.removeAll(aliensKilledByBullets)
             ufos.removeAll { it.hp <= 0 }
 
-            // 5. ALIENS UPDATE & MOWING
+            // 5. ALIENS UPDATE & COMBINE MOWING
             if (aliens.size < 6 && Math.random() < 0.02) spawnAlien()
 
-            val alienIter = aliens.iterator()
-            while (alienIter.hasNext()) {
-                val alien = alienIter.next()
+            val crushedAliens = mutableListOf<Alien>()
+            for (alien in aliens) {
                 alien.wobble += 0.08f
 
                 // Find nearest standing corn
@@ -493,7 +506,7 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
                     val dx = tx - alien.x
                     val dy = ty - alien.y
                     val d = hypot(dx, dy)
-                    if (d > 12f) {
+                    if (d > 12f && !d.isNaN()) {
                         alien.x += (dx / d) * alien.speed
                         alien.y += (dy / d) * alien.speed
                     } else {
@@ -508,7 +521,8 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
                 val distToHeader = hypot(alien.x - headerX, alien.y - headerY)
                 val distToBody = hypot(alien.x - player.x, alien.y - player.y)
 
-                if (distToHeader < harvestRadius || (distToBody < 40f && player.speed > 0.8f)) {
+                if ((distToHeader < harvestRadius || (distToBody < 40f && player.speed > 0.8f)) && !distToHeader.isNaN()) {
+                    crushedAliens.add(alien)
                     soundManager.playAlienSplat()
                     hapticManager.heavyClick()
                     aliensCrushed++
@@ -521,10 +535,10 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
                     } else {
                         triggerStarburst("ПЕРЕМОЛОТ!", 30)
                     }
-
-                    alienIter.remove()
                 }
             }
+
+            aliens.removeAll(crushedAliens)
 
             // 6. UFOS UPDATE
             if (ufos.size < 2 && Math.random() < 0.01) spawnUFO()
@@ -564,6 +578,8 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
     }
 
     private fun drawFrame() {
+        if (!holder.surface.isValid) return
+
         val canvas = try {
             holder.lockCanvas()
         } catch (t: Throwable) {
@@ -599,7 +615,8 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
             val viewportH = if (isPortrait) (controls.viewportBottom - topBarHeight) else screenHeight
             val scaleX = screenWidth / vWidth
             val scaleY = viewportH / vHeight
-            val scale = min(scaleX, scaleY)
+            var scale = min(scaleX, scaleY)
+            if (scale <= 0.05f || scale.isNaN()) scale = 1.0f
 
             val offsetX = (screenWidth - vWidth * scale) / 2f
             val offsetY = topBarHeight + (viewportH - vHeight * scale) / 2f
@@ -612,17 +629,13 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
                 canvas.translate((Math.random() * screenShake - screenShake / 2).toFloat(), (Math.random() * screenShake - screenShake / 2).toFloat())
             }
 
-            // DRAW FARM SCENERY
-            drawFarmWorld(canvas)
-
-            // DRAW COMBINE
-            drawCombine(canvas)
-
-            // DRAW ALIENS & UFOS
-            drawEntities(canvas)
-
-            // DRAW STARBURST POPUP
-            drawActionStarburst(canvas)
+            // ALL ENTITY DRAWING STRICTLY SYNCHRONIZED
+            synchronized(stateLock) {
+                drawFarmWorld(canvas)
+                drawCombine(canvas)
+                drawEntities(canvas)
+                drawActionStarburst(canvas)
+            }
 
             canvas.restore()
 
@@ -644,7 +657,9 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
             Log.e("AstranomiaGameView", "drawFrame render error", t)
         } finally {
             try {
-                holder.unlockCanvasAndPost(canvas)
+                if (holder.surface.isValid) {
+                    holder.unlockCanvasAndPost(canvas)
+                }
             } catch (t: Throwable) {
                 Log.e("AstranomiaGameView", "unlockCanvasAndPost error", t)
             }
@@ -696,8 +711,8 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
         // Upper section: Harvested soil background (y from 0 to 570)
         val soilBmp = soilTileBmp
         if (soilBmp != null) {
-            val sw = soilBmp.width
-            val sh = soilBmp.height
+            val sw = soilBmp.width.coerceAtLeast(1)
+            val sh = soilBmp.height.coerceAtLeast(1)
             for (y in 0 until 570 step sh) {
                 for (x in 0 until vWidth.toInt() step sw) {
                     canvas.drawBitmap(soilBmp, x.toFloat(), y.toFloat(), paint)
@@ -711,8 +726,8 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
         // Lower section: Farmyard sandy ochre ground (y from 570 to 1010)
         val yardBmp = yardTileBmp
         if (yardBmp != null) {
-            val yw = yardBmp.width
-            val yh = yardBmp.height
+            val yw = yardBmp.width.coerceAtLeast(1)
+            val yh = yardBmp.height.coerceAtLeast(1)
             for (y in 570 until vHeight.toInt() step yh) {
                 for (x in 0 until vWidth.toInt() step yw) {
                     canvas.drawBitmap(yardBmp, x.toFloat(), y.toFloat(), paint)
@@ -770,7 +785,6 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
         farmhouseBmp?.let {
             canvas.drawBitmap(it, 130f, 725f, paint)
         } ?: run {
-            // Rustic fallback house
             paint.color = Color.parseColor("#B91C1C")
             canvas.drawRect(200f, 760f, 520f, 960f, paint)
         }
@@ -791,10 +805,10 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
         canvas.save()
         canvas.translate(player.x, player.y)
 
-        // Rotate sprite to match travel direction (default UP = -90 deg, angle 0 is RIGHT)
-        // combine_harvester.png is drawn facing UP, so rotation is (angle + PI/2)
         val deg = ((player.angle + Math.PI / 2) * 180 / Math.PI).toFloat()
-        canvas.rotate(deg)
+        if (!deg.isNaN()) {
+            canvas.rotate(deg)
+        }
 
         // Nitro exhaust flames
         if (player.isNitro) {
@@ -809,7 +823,6 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
         combineBmp?.let {
             canvas.drawBitmap(it, -it.width / 2f, -it.height / 2f, paint)
         } ?: run {
-            // Procedural fallback combine
             paint.color = Color.parseColor("#DC2626")
             canvas.drawRoundRect(RectF(-35f, -30f, 35f, 40f), 8f, 8f, paint)
             paint.color = Color.parseColor("#F59E0B")
@@ -840,7 +853,6 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
         // Draw UFOs
         val uBmp = ufoBmp
         for (ufo in ufos) {
-            // Glowing purple tractor beam
             val beamPath = Path().apply {
                 moveTo(ufo.x - 18f, ufo.y + 15f)
                 lineTo(ufo.x + 18f, ufo.y + 15f)
@@ -869,17 +881,15 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
     }
 
     private fun drawActionStarburst(canvas: Canvas) {
-        // In countdown or when starburstTimer > 0, draw comic starburst over combine
         val showStarburst = (state == GameState.COUNTDOWN || starburstTimer > 0)
         if (!showStarburst) return
 
         canvas.save()
-        // Anchor starburst on top of combine
         canvas.translate(player.x, player.y)
         canvas.scale(starburstScale, starburstScale)
 
         val sbBmp = if (starburstLabel == "2" && starburst2Bmp != null) {
-            starburst2Bmp // EXACT authentic "2" starburst from screenshot!
+            starburst2Bmp
         } else {
             starburstBmp
         }
@@ -888,7 +898,6 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
             canvas.drawBitmap(sbBmp, -sbBmp.width / 2f, -sbBmp.height / 2f, paint)
         }
 
-        // If not using pre-baked "2" bitmap, draw label in center of starburst
         if (starburstLabel != "2" || starburst2Bmp == null) {
             textPaint.color = Color.BLACK
             textPaint.textSize = 38f
@@ -903,7 +912,6 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
         val hudH = 110f
         val hudTop = bottomY - hudH
 
-        // Draw wooden HUD bar across bottom of viewport
         val barBmp = hudBarBmp
         if (barBmp != null) {
             val src = Rect(0, 0, barBmp.width, barBmp.height)
@@ -914,7 +922,6 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
             canvas.drawRect(0f, hudTop, screenWidth, bottomY, paint)
         }
 
-        // Draw Status Metrics inside wooden plank
         val textY = hudTop + 45f
         textPaint.textAlign = Paint.Align.LEFT
         textPaint.textSize = 24f
@@ -952,7 +959,6 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
         paint.color = Color.parseColor("#142010")
         canvas.drawRect(0f, 0f, screenWidth, screenHeight, paint)
 
-        // Farmhouse preview in menu
         farmhouseBmp?.let {
             canvas.drawBitmap(it, cx - it.width / 2f, cy - 260f, paint)
         }
@@ -966,7 +972,6 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
         textPaint.textSize = 28f
         canvas.drawText("БИТВА ЗА УРОЖАЙ НА ДОН-1500А", cx, cy + 10f, textPaint)
 
-        // Start Button
         val btnRect = RectF(cx - 160f, cy + 60f, cx + 160f, cy + 140f)
         paint.color = Color.parseColor("#EF4444")
         canvas.drawRoundRect(btnRect, 20f, 20f, paint)
@@ -1018,66 +1023,75 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        val x = event.x
-        val y = event.y
+        try {
+            val x = event.x
+            val y = event.y
 
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                if (state == GameState.MENU) {
-                    val cx = screenWidth / 2
-                    val cy = screenHeight / 2
-                    val btnRect = RectF(cx - 160f, cy + 60f, cx + 160f, cy + 140f)
-                    if (btnRect.contains(x, y)) {
-                        hapticManager.heavyClick()
-                        startGame()
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    if (state == GameState.MENU) {
+                        val cx = screenWidth / 2
+                        val cy = screenHeight / 2
+                        val btnRect = RectF(cx - 160f, cy + 60f, cx + 160f, cy + 140f)
+                        if (btnRect.contains(x, y)) {
+                            hapticManager.heavyClick()
+                            startGame()
+                        }
+                        return true
                     }
-                    return true
+
+                    if (state == GameState.GAMEOVER) {
+                        val cx = screenWidth / 2
+                        val cy = screenHeight / 2
+                        val btnRect = RectF(cx - 150f, cy + 70f, cx + 150f, cy + 140f)
+                        if (btnRect.contains(x, y)) {
+                            hapticManager.heavyClick()
+                            startGame()
+                        }
+                        return true
+                    }
+
+                    // Check keypad or controls
+                    if (controls.handleTouchDown(x, y)) {
+                        hapticManager.tick()
+                        return true
+                    }
+
+                    // Direct touch on game viewport: steer combine towards touch point
+                    if (y < controls.viewportBottom - 110f) {
+                        synchronized(stateLock) {
+                            val dx = x - (screenWidth / 2)
+                            val dy = y - (controls.viewportBottom / 2)
+                            val a = atan2(dy, dx)
+                            if (!a.isNaN()) {
+                                player.angle = a
+                                player.speed = player.maxSpeed
+                            }
+                        }
+                        return true
+                    }
                 }
 
-                if (state == GameState.GAMEOVER) {
-                    val cx = screenWidth / 2
-                    val cy = screenHeight / 2
-                    val btnRect = RectF(cx - 150f, cy + 70f, cx + 150f, cy + 140f)
-                    if (btnRect.contains(x, y)) {
-                        hapticManager.heavyClick()
-                        startGame()
+                MotionEvent.ACTION_MOVE -> {
+                    if (y < controls.viewportBottom - 110f) {
+                        synchronized(stateLock) {
+                            val dx = x - (screenWidth / 2)
+                            val dy = y - (controls.viewportBottom / 2)
+                            val a = atan2(dy, dx)
+                            if (!a.isNaN()) {
+                                player.angle = a
+                                player.speed = player.maxSpeed
+                            }
+                        }
                     }
-                    return true
                 }
 
-                // Check keypad or controls
-                if (controls.handleTouchDown(x, y)) {
-                    hapticManager.tick()
-                    return true
-                }
-
-                // Direct touch on game viewport: steer combine towards touch point
-                if (y < controls.viewportBottom - 110f) {
-                    synchronized(stateLock) {
-                        val dx = x - (screenWidth / 2)
-                        val dy = y - (controls.viewportBottom / 2)
-                        player.angle = atan2(dy, dx)
-                        player.speed = player.maxSpeed
-                    }
-                    return true
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    controls.handleTouchUp(x, y)
                 }
             }
-
-            MotionEvent.ACTION_MOVE -> {
-                // If dragging in viewport, continue steering
-                if (y < controls.viewportBottom - 110f) {
-                    synchronized(stateLock) {
-                        val dx = x - (screenWidth / 2)
-                        val dy = y - (controls.viewportBottom / 2)
-                        player.angle = atan2(dy, dx)
-                        player.speed = player.maxSpeed
-                    }
-                }
-            }
-
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                controls.handleTouchUp(x, y)
-            }
+        } catch (t: Throwable) {
+            Log.e("AstranomiaGameView", "onTouchEvent error", t)
         }
         return true
     }

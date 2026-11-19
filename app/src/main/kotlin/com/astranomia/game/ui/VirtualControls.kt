@@ -64,35 +64,37 @@ class VirtualControls {
     }
 
     fun updateLayout(viewWidth: Float, viewHeight: Float) {
-        isPortrait = viewHeight > viewWidth
+        val w = viewWidth.coerceAtLeast(100f)
+        val h = viewHeight.coerceAtLeast(100f)
+        isPortrait = h > w
 
         if (isPortrait) {
             // Viewport takes top ~65%, keypad takes bottom ~35%
-            val keypadHeight = (viewHeight * 0.38f).coerceIn(400f, 650f)
-            viewportBottom = viewHeight - keypadHeight
+            val keypadHeight = (h * 0.38f).coerceIn(350f, 650f)
+            viewportBottom = h - keypadHeight
 
             // HUD badges at the bottom of the viewport
-            val badgeW = (viewWidth * 0.14f).coerceIn(80f, 120f)
+            val badgeW = (w * 0.14f).coerceIn(80f, 120f)
             val badgeH = (badgeW * 1.05f)
             hudLeftBadgeBounds.set(0f, viewportBottom - badgeH, badgeW, viewportBottom)
-            hudRightBadgeBounds.set(viewWidth - badgeW, viewportBottom - badgeH, viewWidth, viewportBottom)
+            hudRightBadgeBounds.set(w - badgeW, viewportBottom - badgeH, w, viewportBottom)
 
             // Setup Keypad (5 rows x 3 columns)
             keyButtons.clear()
             val rows = 5
             val cols = 3
             val padLeft = 8f
-            val padRight = viewWidth - 8f
+            val padRight = w - 8f
             val padTop = viewportBottom + 12f
-            val padBottom = viewHeight - 12f
+            val padBottom = h - 12f
 
-            val totalW = padRight - padLeft
-            val totalH = padBottom - padTop
+            val totalW = (padRight - padLeft).coerceAtLeast(100f)
+            val totalH = (padBottom - padTop).coerceAtLeast(100f)
             val gapX = 8f
             val gapY = 8f
 
-            val btnW = (totalW - gapX * (cols - 1)) / cols
-            val btnH = (totalH - gapY * (rows - 1)) / rows
+            val btnW = ((totalW - gapX * (cols - 1)) / cols).coerceAtLeast(20f)
+            val btnH = ((totalH - gapY * (rows - 1)) / rows).coerceAtLeast(20f)
 
             val layout = listOf(
                 listOf(Triple("L", "⚡", "L"), Triple("F", "🔥", "F"), Triple("R", "📖", "R")),

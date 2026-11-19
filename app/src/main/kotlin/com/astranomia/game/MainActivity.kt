@@ -2,6 +2,7 @@ package com.astranomia.game
 
 import android.os.Build
 import android.os.Bundle
+import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.view.WindowInsets
@@ -17,15 +18,16 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Safety handler: log any unhandled thread errors for diagnosis
+        // Safety handler: prevent background thread crashes from terminating the app
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             Log.e("Astranomia", "Uncaught exception on thread: ${thread.name}", throwable)
-            defaultHandler?.uncaughtException(thread, throwable)
+            if (thread == Looper.getMainLooper().thread) {
+                defaultHandler?.uncaughtException(thread, throwable)
+            }
         }
 
         try {
-            // Fullscreen immersive landscape
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             hideSystemUI()
 

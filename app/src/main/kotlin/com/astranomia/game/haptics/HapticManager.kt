@@ -8,7 +8,7 @@ import android.os.VibratorManager
 import android.util.Log
 
 /**
- * Manages tactile feedback (Haptics) on Android
+ * Manages tactile feedback (Haptics) on Android safely
  */
 class HapticManager(context: Context) {
 
@@ -27,59 +27,62 @@ class HapticManager(context: Context) {
 
     var isEnabled: Boolean = true
 
-    /**
-     * Light tick when grinding an alien minion with the combine header
-     */
     fun tick() {
         if (!isEnabled || vibrator == null) return
         try {
             if (!vibrator.hasVibrator()) return
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
+                try {
+                    vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
+                } catch (t: Throwable) {
+                    vibrator.vibrate(VibrationEffect.createOneShot(15, VibrationEffect.DEFAULT_AMPLITUDE))
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(15, VibrationEffect.DEFAULT_AMPLITUDE))
             } else {
                 @Suppress("DEPRECATION")
                 vibrator.vibrate(15)
             }
         } catch (t: Throwable) {
-            Log.e("HapticManager", "tick vibration error", t)
+            Log.e("HapticManager", "tick error", t)
         }
     }
 
-    /**
-     * Heavy thump when firing cannon or destroying an alien saucer
-     */
     fun heavyClick() {
         if (!isEnabled || vibrator == null) return
         try {
             if (!vibrator.hasVibrator()) return
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK))
+                try {
+                    vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK))
+                } catch (t: Throwable) {
+                    vibrator.vibrate(VibrationEffect.createOneShot(35, VibrationEffect.DEFAULT_AMPLITUDE))
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(35, VibrationEffect.DEFAULT_AMPLITUDE))
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(40)
+                vibrator.vibrate(35)
             }
         } catch (t: Throwable) {
-            Log.e("HapticManager", "heavyClick vibration error", t)
+            Log.e("HapticManager", "heavyClick error", t)
         }
     }
 
-    /**
-     * Nitro Overdrive / Coffin Dance activation vibration burst
-     */
     fun nitroBurst() {
         if (!isEnabled || vibrator == null) return
         try {
             if (!vibrator.hasVibrator()) return
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val timings = longArrayOf(0, 100, 50, 150, 50, 250)
+                val timings = longArrayOf(0, 80, 40, 120, 40, 200)
                 val amplitudes = intArrayOf(0, 255, 0, 255, 0, 255)
                 vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(500)
+                vibrator.vibrate(400)
             }
         } catch (t: Throwable) {
-            Log.e("HapticManager", "nitroBurst vibration error", t)
+            Log.e("HapticManager", "nitroBurst error", t)
         }
     }
 }
