@@ -27,3 +27,10 @@
 * 👉 **[`SCENARIO.md`](./SCENARIO.md)** — Полный сценарий, Game Design Document (GDD), описание героя, комбайна, врагов, боссов и сюжетной кампании.
 * 👉 **[`NITRO_ASTRONOMIA.md`](./NITRO_ASTRONOMIA.md)** — Сценарий ультимейта «Нитро-Астрономия» и интеграция мема Coffin Dance в геймплей.
 * 👉 **[`SOUNDTRACK_GUIDE.md`](./SOUNDTRACK_GUIDE.md)** — Музыкальный гид: трек меню «Astronomia», референсы фонка со ссылками и динамическая аудиосистема.
+
+---
+
+### 🎨 Официальные концепт-арты игры
+* 💥 **Дед Макар в ушанке со звездой ведёт огонь по НЛО из кабины ДОН-1500А:** [`assets/ded_makar_shooting_ufo.png`](./assets/ded_makar_shooting_ufo.png)
+* 🚜 **Красный комбайн «ДОН-1500А» в бою:** [`assets/don_1500_combat_art.png`](./assets/don_1500_combat_art.png)
+* 📸 **Оригинальный фото-референс комбайна Ростсельмаш ДОН-1500А:** [`assets/don_1500_reference.jpeg`](./assets/don_1500_reference.jpeg)
