@@ -33,6 +33,10 @@ class VirtualControls {
     // Top-Left HUD bounds
     private var menuBounds = RectF()
 
+    init {
+        updateLayout(1280f, 720f)
+    }
+
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.DEFAULT_BOLD
     }

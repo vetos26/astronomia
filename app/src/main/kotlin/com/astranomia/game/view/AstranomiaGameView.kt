@@ -2,6 +2,7 @@ package com.astranomia.game.view
 
 import android.content.Context
 import android.graphics.*
+import android.util.Log
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -14,7 +15,8 @@ import kotlin.math.*
 class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback, Runnable {
 
     private var gameThread: Thread? = null
-    private var isRunning: Boolean = false
+    @Volatile private var isRunning: Boolean = false
+    private val stateLock = Any()
 
     val soundManager = SoundManager()
     val hapticManager = HapticManager(context)
@@ -23,8 +25,8 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
     // World state
     private val worldWidth = 1920f
     private val worldHeight = 1080f
-    private var screenWidth = 0f
-    private var screenHeight = 0f
+    private var screenWidth = 1280f
+    private var screenHeight = 720f
 
     val player = Combine(worldWidth / 2, worldHeight / 2)
     val crops = mutableListOf<Crop>()
@@ -41,7 +43,7 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
     var screenShake = 0f
 
     enum class GameState { MENU, PLAYING, PAUSED, GAMEOVER }
-    var state = GameState.MENU
+    @Volatile var state = GameState.MENU
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -52,31 +54,39 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
         holder.addCallback(this)
         isFocusable = true
 
+        controls.updateLayout(screenWidth, screenHeight)
+
         controls.onMenuClicked = {
             if (state == GameState.PLAYING) state = GameState.PAUSED
             else if (state == GameState.PAUSED) state = GameState.PLAYING
         }
 
         controls.onReloadClicked = {
-            if (!player.isReloading && player.ammo < player.maxAmmo) {
-                player.isReloading = true
-                player.reloadProgress = 0f
+            synchronized(stateLock) {
+                if (!player.isReloading && player.ammo < player.maxAmmo) {
+                    player.isReloading = true
+                    player.reloadProgress = 0f
+                }
             }
         }
 
         controls.onSuperClicked = {
-            if (player.superCharge >= 100f && !player.isNitro) {
-                player.isNitro = true
-                player.nitroTime = 480
-                player.superCharge = 0f
-                screenShake = 22f
-                hapticManager.nitroBurst()
-                soundManager.playNitroActivation()
-                floatingTexts.add(FloatingText(player.x, player.y - 50, "⚡ НИТРО-АСТРОНОМИЯ! ⚡", Color.parseColor("#FFCC00"), 36f))
+            synchronized(stateLock) {
+                if (player.superCharge >= 100f && !player.isNitro) {
+                    player.isNitro = true
+                    player.nitroTime = 480
+                    player.superCharge = 0f
+                    screenShake = 22f
+                    hapticManager.nitroBurst()
+                    soundManager.playNitroActivation()
+                    floatingTexts.add(FloatingText(player.x, player.y - 50, "⚡ НИТРО-АСТРОНОМИЯ! ⚡", Color.parseColor("#FFCC00"), 36f))
+                }
             }
         }
 
-        initCrops()
+        synchronized(stateLock) {
+            initCrops()
+        }
     }
 
     private fun initCrops() {
@@ -94,22 +104,28 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
     }
 
     fun startGame() {
-        score = 0
-        aliensCrushed = 0
-        ufosDestroyed = 0
-        cropHealth = 100f
-        player.reset(worldWidth / 2, worldHeight / 2)
-        initCrops()
-        aliens.clear()
-        ufos.clear()
-        bullets.clear()
-        particles.clear()
-        floatingTexts.clear()
+        synchronized(stateLock) {
+            score = 0
+            aliensCrushed = 0
+            ufosDestroyed = 0
+            cropHealth = 100f
+            player.reset(worldWidth / 2, worldHeight / 2)
+            initCrops()
+            aliens.clear()
+            ufos.clear()
+            bullets.clear()
+            particles.clear()
+            floatingTexts.clear()
 
-        repeat(2) { spawnUFO() }
-        repeat(4) { spawnAlien() }
+            repeat(2) { spawnUFO() }
+            repeat(4) { spawnAlien() }
+        }
 
-        soundManager.startGameMusic()
+        try {
+            soundManager.startGameMusic()
+        } catch (t: Throwable) {
+            Log.e("AstranomiaGameView", "startGameMusic error", t)
+        }
         state = GameState.PLAYING
     }
 
@@ -133,31 +149,50 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
 
     override fun surfaceCreated(holder: SurfaceHolder) {
         isRunning = true
-        soundManager.startMenuMusic()
-        gameThread = Thread(this)
-        gameThread?.start()
+        try {
+            soundManager.startMenuMusic()
+        } catch (t: Throwable) {
+            Log.e("AstranomiaGameView", "startMenuMusic error", t)
+        }
+
+        try {
+            gameThread = Thread(this, "GameLoopThread")
+            gameThread?.start()
+        } catch (t: Throwable) {
+            Log.e("AstranomiaGameView", "gameThread start error", t)
+        }
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        screenWidth = width.toFloat()
-        screenHeight = height.toFloat()
-        controls.updateLayout(screenWidth, screenHeight)
+        if (width > 0 && height > 0) {
+            screenWidth = width.toFloat()
+            screenHeight = height.toFloat()
+            controls.updateLayout(screenWidth, screenHeight)
+        }
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         isRunning = false
-        soundManager.stopMusic()
         try {
-            gameThread?.join()
+            soundManager.stopMusic()
+        } catch (t: Throwable) {}
+
+        try {
+            gameThread?.join(500)
         } catch (e: InterruptedException) {}
+        gameThread = null
     }
 
     override fun run() {
         while (isRunning) {
             val startTime = System.currentTimeMillis()
 
-            updatePhysics()
-            drawFrame()
+            try {
+                updatePhysics()
+                drawFrame()
+            } catch (t: Throwable) {
+                Log.e("AstranomiaGameView", "Game loop tick error", t)
+            }
 
             val elapsed = System.currentTimeMillis() - startTime
             val sleep = 16 - elapsed
@@ -172,198 +207,211 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
     private fun updatePhysics() {
         if (state != GameState.PLAYING) return
 
-        if (screenShake > 0) screenShake = max(0f, screenShake - 0.8f)
+        synchronized(stateLock) {
+            if (screenShake > 0) screenShake = max(0f, screenShake - 0.8f)
 
-        // 1. COMBINE PHYSICS & MOVEMENT
-        if (player.isNitro) {
-            player.nitroTime--
-            if (player.nitroTime <= 0) player.isNitro = false
-        }
-
-        val maxSpeed = if (player.isNitro) player.maxSpeed * 2.2f else player.maxSpeed
-        val accel = 0.16f
-
-        if (controls.isUpPressed) {
-            player.speed = min(maxSpeed, player.speed + accel)
-        } else if (controls.isDownPressed) {
-            player.speed = max(-maxSpeed * 0.5f, player.speed - accel)
-        } else {
-            player.speed *= 0.94f
-        }
-
-        val steer = 0.045f * (if (player.speed >= 0) 1f else -1f)
-        if (controls.isLeftPressed) player.angle -= steer
-        if (controls.isRightPressed) player.angle += steer
-
-        player.x += cos(player.angle) * player.speed
-        player.y += sin(player.angle) * player.speed
-
-        player.x = player.x.coerceIn(60f, worldWidth - 60f)
-        player.y = player.y.coerceIn(60f, worldHeight - 60f)
-
-        if (abs(player.speed) > 0.1f) player.reelAngle += player.speed * 0.08f
-
-        // Reload logic
-        if (player.isReloading) {
-            player.reloadProgress += 0.02f
-            if (player.reloadProgress >= 1f) {
-                player.isReloading = false
-                player.ammo = player.maxAmmo
+            // 1. COMBINE PHYSICS & MOVEMENT
+            if (player.isNitro) {
+                player.nitroTime--
+                if (player.nitroTime <= 0) player.isNitro = false
             }
-        }
 
-        // Fire logic
-        if (controls.isFirePressed && !player.isReloading) {
-            if (player.ammo > 0) {
-                player.ammo--
-                soundManager.playShotgun()
-                hapticManager.heavyClick()
+            val maxSpeed = if (player.isNitro) player.maxSpeed * 2.2f else player.maxSpeed
+            val accel = 0.16f
 
-                val noseX = player.x + cos(player.angle) * 35f
-                val noseY = player.y + sin(player.angle) * 35f
-
-                bullets.add(Bullet(noseX, noseY, cos(player.angle) * 14f, sin(player.angle) * 14f))
-                controls.isFirePressed = false
+            if (controls.isUpPressed) {
+                player.speed = min(maxSpeed, player.speed + accel)
+            } else if (controls.isDownPressed) {
+                player.speed = max(-maxSpeed * 0.5f, player.speed - accel)
             } else {
-                controls.onReloadClicked?.invoke()
+                player.speed *= 0.94f
             }
-        }
 
-        // 2. BULLETS & COLLISION WITH UFOS
-        val bulletIter = bullets.iterator()
-        while (bulletIter.hasNext()) {
-            val b = bulletIter.next()
-            b.x += b.vx
-            b.y += b.vy
-            b.life--
+            val steer = 0.045f * (if (player.speed >= 0) 1f else -1f)
+            if (controls.isLeftPressed) player.angle -= steer
+            if (controls.isRightPressed) player.angle += steer
 
-            var hit = false
-            for (ufo in ufos) {
-                val d = hypot(b.x - ufo.x, b.y - ufo.y)
-                if (d < 45f) {
-                    ufo.hp -= b.damage
-                    hit = true
-                    screenShake = 5f
-                    if (ufo.hp <= 0) {
-                        soundManager.playUfoCrash()
-                        hapticManager.heavyClick()
-                        screenShake = 16f
-                        ufosDestroyed++
-                        score += 500
-                        floatingTexts.add(FloatingText(ufo.x, ufo.y, "+500 ТАРЕЛКА СБИТА!", Color.parseColor("#38BDF8"), 26f))
-                        ufo.targetCrop?.isStolen = false
-                    }
-                    break
+            player.x += cos(player.angle) * player.speed
+            player.y += sin(player.angle) * player.speed
+            player.x = player.x.coerceIn(60f, worldWidth - 60f)
+            player.y = player.y.coerceIn(60f, worldHeight - 60f)
+
+            if (abs(player.speed) > 0.1f) player.reelAngle += player.speed * 0.08f
+
+            // Reload logic
+            if (player.isReloading) {
+                player.reloadProgress += 0.02f
+                if (player.reloadProgress >= 1f) {
+                    player.isReloading = false
+                    player.ammo = player.maxAmmo
                 }
             }
 
-            if (hit || b.life <= 0) bulletIter.remove()
-        }
-        ufos.removeAll { it.hp <= 0 }
+            // Fire logic
+            if (controls.isFirePressed && !player.isReloading) {
+                if (player.ammo > 0) {
+                    player.ammo--
+                    soundManager.playShotgun()
+                    hapticManager.heavyClick()
 
-        // 3. UFOS UPDATE
-        if (ufos.size < 3 && Math.random() < 0.015) spawnUFO()
-        ufos.forEach { ufo ->
-            ufo.wobble += 0.05f
-            if (ufo.targetCrop == null || ufo.targetCrop!!.isStolen) {
-                ufo.targetCrop = crops.filter { !it.isStolen }.minByOrNull { hypot(it.x - ufo.x, it.y - ufo.y) }
-            }
+                    val noseX = player.x + cos(player.angle) * 35f
+                    val noseY = player.y + sin(player.angle) * 35f
 
-            ufo.targetCrop?.let { crop ->
-                val dx = crop.x - ufo.x
-                val dy = crop.y - ufo.y
-                val d = hypot(dx, dy)
-                if (d > 25f) {
-                    ufo.x += (dx / d) * ufo.speed
-                    ufo.y += (dy / d) * ufo.speed
-                    ufo.beamActive = false
+                    bullets.add(Bullet(noseX, noseY, cos(player.angle) * 14f, sin(player.angle) * 14f))
+                    controls.isFirePressed = false
                 } else {
-                    ufo.beamActive = true
-                    ufo.beamTimer++
-                    ufo.beamLift = min(1f, ufo.beamTimer / 180f)
-                    if (ufo.beamTimer >= 180) {
-                        crop.isStolen = true
-                        cropHealth = max(0f, cropHealth - 5f)
-                        floatingTexts.add(FloatingText(ufo.x, ufo.y - 20, "ОВОЩ ПОХИЩЕН! -5%", Color.RED, 20f))
-                        ufo.targetCrop = null
-                        ufo.beamActive = false
-                        ufo.beamTimer = 0
-                        if (cropHealth <= 0f) state = GameState.GAMEOVER
-                    }
+                    controls.onReloadClicked?.invoke()
                 }
             }
-        }
 
-        // 4. ALIENS & COMBINE HEADER GRINDING
-        if (aliens.size < 7 && Math.random() < 0.02) spawnAlien()
+            // 2. BULLETS & COLLISION WITH UFOS
+            val bulletIter = bullets.iterator()
+            while (bulletIter.hasNext()) {
+                val b = bulletIter.next()
+                b.x += b.vx
+                b.y += b.vy
+                b.life--
 
-        val headerX = player.x + cos(player.angle) * 38f
-        val headerY = player.y + sin(player.angle) * 38f
-        val headerRadius = 40f
-
-        val alienIter = aliens.iterator()
-        while (alienIter.hasNext()) {
-            val alien = alienIter.next()
-            alien.wobble += 0.08f
-
-            if (alien.carriedCrop == null) {
-                if (alien.targetCrop == null || alien.targetCrop!!.isStolen) {
-                    alien.targetCrop = crops.filter { !it.isStolen }.minByOrNull { hypot(it.x - alien.x, it.y - alien.y) }
+                var hit = false
+                for (ufo in ufos) {
+                    val d = hypot(b.x - ufo.x, b.y - ufo.y)
+                    if (d < 45f) {
+                        ufo.hp -= b.damage
+                        hit = true
+                        screenShake = 5f
+                        if (ufo.hp <= 0) {
+                            soundManager.playUfoCrash()
+                            hapticManager.heavyClick()
+                            screenShake = 16f
+                            ufosDestroyed++
+                            score += 500
+                            floatingTexts.add(FloatingText(ufo.x, ufo.y, "+500 ТАРЕЛКА СБИТА!", Color.parseColor("#38BDF8"), 26f))
+                            ufo.targetCrop?.isStolen = false
+                        }
+                        break
+                    }
                 }
-                alien.targetCrop?.let { tc ->
-                    val dx = tc.x - alien.x
-                    val dy = tc.y - alien.y
+
+                if (hit || b.life <= 0) bulletIter.remove()
+            }
+            ufos.removeAll { it.hp <= 0 }
+
+            // 3. UFOS UPDATE
+            if (ufos.size < 3 && Math.random() < 0.015) spawnUFO()
+            ufos.forEach { ufo ->
+                ufo.wobble += 0.05f
+                if (ufo.targetCrop == null || ufo.targetCrop!!.isStolen) {
+                    ufo.targetCrop = crops.filter { !it.isStolen }.minByOrNull { hypot(it.x - ufo.x, it.y - ufo.y) }
+                }
+
+                ufo.targetCrop?.let { crop ->
+                    val dx = crop.x - ufo.x
+                    val dy = crop.y - ufo.y
                     val d = hypot(dx, dy)
-                    if (d > 10f) {
-                        alien.x += (dx / d) * alien.speed
-                        alien.y += (dy / d) * alien.speed
+                    if (d > 25f) {
+                        ufo.x += (dx / d) * ufo.speed
+                        ufo.y += (dy / d) * ufo.speed
+                        ufo.beamActive = false
                     } else {
-                        alien.carriedCrop = tc
-                        tc.isStolen = true
+                        ufo.beamActive = true
+                        ufo.beamTimer++
+                        ufo.beamLift = min(1f, ufo.beamTimer / 180f)
+                        if (ufo.beamTimer >= 180) {
+                            crop.isStolen = true
+                            cropHealth = max(0f, cropHealth - 5f)
+                            floatingTexts.add(FloatingText(ufo.x, ufo.y - 20, "ОВОЩ ПОХИЩЕН! -5%", Color.RED, 20f))
+                            ufo.targetCrop = null
+                            ufo.beamActive = false
+                            ufo.beamTimer = 0
+                            if (cropHealth <= 0f) state = GameState.GAMEOVER
+                        }
                     }
                 }
-            } else {
-                val dx = (worldWidth / 2) - alien.x
-                val dy = -alien.y
-                val d = hypot(dx, dy)
-                alien.x += (dx / d) * (alien.speed * 0.75f)
-                alien.y += (dy / d) * (alien.speed * 0.75f)
             }
 
-            // MOWING & CRUSHING BY DON-1500
-            val distToHeader = hypot(alien.x - headerX, alien.y - headerY)
-            val distToBody = hypot(alien.x - player.x, alien.y - player.y)
+            // 4. ALIENS & COMBINE HEADER GRINDING
+            if (aliens.size < 7 && Math.random() < 0.02) spawnAlien()
 
-            if (distToHeader < headerRadius || (distToBody < 45f && abs(player.speed) > 0.8f)) {
-                soundManager.playAlienSplat()
-                hapticManager.tick()
-                aliensCrushed++
-                score += 100
-                player.superCharge = min(100f, player.superCharge + 6f)
+            val headerX = player.x + cos(player.angle) * 38f
+            val headerY = player.y + sin(player.angle) * 38f
+            val headerRadius = 40f
 
-                if (player.isNitro) {
-                    floatingTexts.add(FloatingText(alien.x, alien.y, "⚰️ COFFIN COMBO! +250", Color.parseColor("#FFCC00"), 24f))
-                    score += 150
+            val alienIter = aliens.iterator()
+            while (alienIter.hasNext()) {
+                val alien = alienIter.next()
+                alien.wobble += 0.08f
+
+                if (alien.carriedCrop == null) {
+                    if (alien.targetCrop == null || alien.targetCrop!!.isStolen) {
+                        alien.targetCrop = crops.filter { !it.isStolen }.minByOrNull { hypot(it.x - alien.x, it.y - alien.y) }
+                    }
+                    alien.targetCrop?.let { tc ->
+                        val dx = tc.x - alien.x
+                        val dy = tc.y - alien.y
+                        val d = hypot(dx, dy)
+                        if (d > 10f) {
+                            alien.x += (dx / d) * alien.speed
+                            alien.y += (dy / d) * alien.speed
+                        } else {
+                            alien.carriedCrop = tc
+                            tc.isStolen = true
+                        }
+                    }
                 } else {
-                    floatingTexts.add(FloatingText(alien.x, alien.y, "+100 ПЕРЕМОЛОТ!", Color.parseColor("#22C55E"), 18f))
+                    val dx = (worldWidth / 2) - alien.x
+                    val dy = -alien.y
+                    val d = hypot(dx, dy)
+                    alien.x += (dx / d) * (alien.speed * 0.75f)
+                    alien.y += (dy / d) * (alien.speed * 0.75f)
                 }
 
-                alien.carriedCrop?.isStolen = false
-                alienIter.remove()
-            }
-        }
+                // MOWING & CRUSHING BY DON-1500
+                val distToHeader = hypot(alien.x - headerX, alien.y - headerY)
+                val distToBody = hypot(alien.x - player.x, alien.y - player.y)
 
-        // Floating texts update
-        floatingTexts.removeAll {
-            it.y -= 0.8f
-            it.life--
-            it.life <= 0
+                if (distToHeader < headerRadius || (distToBody < 45f && abs(player.speed) > 0.8f)) {
+                    soundManager.playAlienSplat()
+                    hapticManager.tick()
+                    aliensCrushed++
+                    score += 100
+                    player.superCharge = min(100f, player.superCharge + 6f)
+
+                    if (player.isNitro) {
+                        floatingTexts.add(FloatingText(alien.x, alien.y, "⚰️ COFFIN COMBO! +250", Color.parseColor("#FFCC00"), 24f))
+                        score += 150
+                    } else {
+                        floatingTexts.add(FloatingText(alien.x, alien.y, "+100 ПЕРЕМОЛОТ!", Color.parseColor("#22C55E"), 18f))
+                    }
+
+                    alien.carriedCrop?.isStolen = false
+                    alienIter.remove()
+                }
+            }
+
+            // Floating texts update
+            floatingTexts.removeAll {
+                it.y -= 0.8f
+                it.life--
+                it.life <= 0
+            }
         }
     }
 
     private fun drawFrame() {
-        val canvas = holder.lockCanvas() ?: return
+        val canvas = try {
+            holder.lockCanvas()
+        } catch (t: Throwable) {
+            Log.e("AstranomiaGameView", "lockCanvas error", t)
+            null
+        } ?: return
+
         try {
+            if (width > 0 && height > 0 && (screenWidth != width.toFloat() || screenHeight != height.toFloat())) {
+                screenWidth = width.toFloat()
+                screenHeight = height.toFloat()
+                controls.updateLayout(screenWidth, screenHeight)
+            }
+
             canvas.drawColor(Color.parseColor("#142010"))
 
             if (state == GameState.MENU) {
@@ -387,65 +435,67 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
                 canvas.drawLine(0f, y.toFloat(), worldWidth, y.toFloat(), paint)
             }
 
-            // 2. Draw Crops
-            crops.filter { !it.isStolen }.forEach { crop ->
-                paint.color = when (crop.type) {
-                    CropType.PUMPKIN -> Color.parseColor("#EA580C")
-                    CropType.WATERMELON -> Color.parseColor("#15803D")
-                    CropType.CARROT -> Color.parseColor("#F97316")
-                    CropType.POTATO -> Color.parseColor("#A16207")
-                }
-                canvas.drawCircle(crop.x, crop.y, 14f, paint)
-            }
-
-            // 3. Draw Aliens
-            aliens.forEach { alien ->
-                paint.color = Color.parseColor("#22C55E")
-                canvas.drawCircle(alien.x, alien.y, 12f, paint)
-                // Eyes
-                paint.color = Color.WHITE
-                canvas.drawCircle(alien.x - 4f, alien.y - 3f, 4f, paint)
-                canvas.drawCircle(alien.x + 4f, alien.y - 3f, 4f, paint)
-                paint.color = Color.BLACK
-                canvas.drawCircle(alien.x - 4f, alien.y - 3f, 2f, paint)
-                canvas.drawCircle(alien.x + 4f, alien.y - 3f, 2f, paint)
-            }
-
-            // 4. Draw Combine «ДОН-1500А»
-            drawDon1500(canvas)
-
-            // 5. Draw Bullets
-            paint.color = Color.parseColor("#F59E0B")
-            bullets.forEach { b ->
-                canvas.drawCircle(b.x, b.y, 7f, paint)
-            }
-
-            // 6. Draw UFOs
-            ufos.forEach { ufo ->
-                if (ufo.beamActive && ufo.targetCrop != null) {
-                    val path = Path().apply {
-                        moveTo(ufo.x - 15f, ufo.y + 10f)
-                        lineTo(ufo.x + 15f, ufo.y + 10f)
-                        lineTo(ufo.x + 50f, ufo.y + 150f)
-                        lineTo(ufo.x - 50f, ufo.y + 150f)
-                        close()
+            synchronized(stateLock) {
+                // 2. Draw Crops
+                crops.filter { !it.isStolen }.forEach { crop ->
+                    paint.color = when (crop.type) {
+                        CropType.PUMPKIN -> Color.parseColor("#EA580C")
+                        CropType.WATERMELON -> Color.parseColor("#15803D")
+                        CropType.CARROT -> Color.parseColor("#F97316")
+                        CropType.POTATO -> Color.parseColor("#A16207")
                     }
-                    paint.color = Color.argb(120, 168, 85, 247)
-                    canvas.drawPath(path, paint)
+                    canvas.drawCircle(crop.x, crop.y, 14f, paint)
                 }
 
-                // Saucer body
-                paint.color = Color.parseColor("#64748B")
-                canvas.drawOval(ufo.x - 45f, ufo.y - 15f, ufo.x + 45f, ufo.y + 15f, paint)
-                paint.color = Color.parseColor("#38BDF8")
-                canvas.drawOval(ufo.x - 22f, ufo.y - 24f, ufo.x + 22f, ufo.y, paint)
-            }
+                // 3. Draw Aliens
+                aliens.forEach { alien ->
+                    paint.color = Color.parseColor("#22C55E")
+                    canvas.drawCircle(alien.x, alien.y, 12f, paint)
+                    // Eyes
+                    paint.color = Color.WHITE
+                    canvas.drawCircle(alien.x - 4f, alien.y - 3f, 4f, paint)
+                    canvas.drawCircle(alien.x + 4f, alien.y - 3f, 4f, paint)
+                    paint.color = Color.BLACK
+                    canvas.drawCircle(alien.x - 4f, alien.y - 3f, 2f, paint)
+                    canvas.drawCircle(alien.x + 4f, alien.y - 3f, 2f, paint)
+                }
 
-            // 7. Floating Texts
-            floatingTexts.forEach { ft ->
-                textPaint.color = ft.color
-                textPaint.textSize = ft.size
-                canvas.drawText(ft.text, ft.x - 40f, ft.y, textPaint)
+                // 4. Draw Combine «ДОН-1500А»
+                drawDon1500(canvas)
+
+                // 5. Draw Bullets
+                paint.color = Color.parseColor("#F59E0B")
+                bullets.forEach { b ->
+                    canvas.drawCircle(b.x, b.y, 7f, paint)
+                }
+
+                // 6. Draw UFOs
+                ufos.forEach { ufo ->
+                    if (ufo.beamActive && ufo.targetCrop != null) {
+                        val path = Path().apply {
+                            moveTo(ufo.x - 15f, ufo.y + 10f)
+                            lineTo(ufo.x + 15f, ufo.y + 10f)
+                            lineTo(ufo.x + 50f, ufo.y + 150f)
+                            lineTo(ufo.x - 50f, ufo.y + 150f)
+                            close()
+                        }
+                        paint.color = Color.argb(120, 168, 85, 247)
+                        canvas.drawPath(path, paint)
+                    }
+
+                    // Saucer body
+                    paint.color = Color.parseColor("#64748B")
+                    canvas.drawOval(ufo.x - 45f, ufo.y - 15f, ufo.x + 45f, ufo.y + 15f, paint)
+                    paint.color = Color.parseColor("#38BDF8")
+                    canvas.drawOval(ufo.x - 22f, ufo.y - 24f, ufo.x + 22f, ufo.y, paint)
+                }
+
+                // 7. Floating Texts
+                floatingTexts.forEach { ft ->
+                    textPaint.color = ft.color
+                    textPaint.textSize = ft.size
+                    canvas.drawText(ft.text, ft.x - 40f, ft.y, textPaint)
+                }
             }
 
             canvas.restore()
@@ -457,8 +507,14 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
                 drawGameOver(canvas)
             }
 
+        } catch (t: Throwable) {
+            Log.e("AstranomiaGameView", "drawFrame render error", t)
         } finally {
-            holder.unlockCanvasAndPost(canvas)
+            try {
+                holder.unlockCanvasAndPost(canvas)
+            } catch (t: Throwable) {
+                Log.e("AstranomiaGameView", "unlockCanvasAndPost error", t)
+            }
         }
     }
 
@@ -508,86 +564,111 @@ class AstranomiaGameView(context: Context) : SurfaceView(context), SurfaceHolder
     }
 
     private fun drawMenu(canvas: Canvas) {
+        val cx = screenWidth / 2
+        val cy = screenHeight / 2
+
         textPaint.color = Color.parseColor("#FFCC00")
         textPaint.textSize = 64f
         textPaint.textAlign = Paint.Align.CENTER
-        canvas.drawText("ASTRANOMIA", screenWidth / 2, screenHeight / 2 - 80f, textPaint)
+        canvas.drawText("ASTRANOMIA", cx, cy - 80f, textPaint)
 
         textPaint.color = Color.parseColor("#38BDF8")
         textPaint.textSize = 32f
-        canvas.drawText("БИТВА ЗА УРОЖАЙ НА ДОН-1500А", screenWidth / 2, screenHeight / 2 - 20f, textPaint)
+        canvas.drawText("БИТВА ЗА УРОЖАЙ НА ДОН-1500А", cx, cy - 20f, textPaint)
 
         // Start Button
-        val btnRect = RectF(screenWidth / 2 - 160f, screenHeight / 2 + 40f, screenWidth / 2 + 160f, screenHeight / 2 + 120f)
+        val btnRect = RectF(cx - 160f, cy + 40f, cx + 160f, cy + 120f)
         paint.color = Color.parseColor("#EF4444")
         canvas.drawRoundRect(btnRect, 20f, 20f, paint)
         textPaint.color = Color.WHITE
         textPaint.textSize = 32f
-        canvas.drawText("▶ НАЧАТЬ ЖАТВУ", screenWidth / 2, screenHeight / 2 + 92f, textPaint)
+        canvas.drawText("▶ НАЧАТЬ ЖАТВУ", cx, cy + 92f, textPaint)
     }
 
     private fun drawGameOver(canvas: Canvas) {
+        val cx = screenWidth / 2
+        val cy = screenHeight / 2
+
         paint.color = Color.argb(200, 10, 15, 25)
         canvas.drawRect(0f, 0f, screenWidth, screenHeight, paint)
 
         textPaint.color = Color.parseColor("#EF4444")
         textPaint.textSize = 60f
         textPaint.textAlign = Paint.Align.CENTER
-        canvas.drawText("ЖАТВА ОКОНЧЕНА", screenWidth / 2, screenHeight / 2 - 60f, textPaint)
+        canvas.drawText("ЖАТВА ОКОНЧЕНА", cx, cy - 60f, textPaint)
 
         textPaint.color = Color.parseColor("#FFCC00")
         textPaint.textSize = 38f
-        canvas.drawText("🏆 ИТОГОВЫЙ СЧЁТ: $score", screenWidth / 2, screenHeight / 2 + 10f, textPaint)
+        canvas.drawText("🏆 ИТОГОВЫЙ СЧЁТ: $score", cx, cy + 10f, textPaint)
 
-        val btnRect = RectF(screenWidth / 2 - 140f, screenHeight / 2 + 60f, screenWidth / 2 + 140f, screenHeight / 2 + 130f)
+        val btnRect = RectF(cx - 140f, cy + 60f, cx + 140f, cy + 130f)
         paint.color = Color.parseColor("#3B82F6")
         canvas.drawRoundRect(btnRect, 16f, 16f, paint)
         textPaint.color = Color.WHITE
         textPaint.textSize = 28f
-        canvas.drawText("🔁 ЗАНОВО", screenWidth / 2, screenHeight / 2 + 105f, textPaint)
+        canvas.drawText("🔁 ЗАНОВО", cx, cy + 105f, textPaint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        val x = event.x
-        val y = event.y
+        try {
+            val x = event.x
+            val y = event.y
 
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
-                if (state == GameState.MENU) {
-                    val btnRect = RectF(screenWidth / 2 - 160f, screenHeight / 2 + 40f, screenWidth / 2 + 160f, screenHeight / 2 + 120f)
-                    if (btnRect.contains(x, y)) {
-                        startGame()
-                        return true
+            val cx = screenWidth / 2
+            val cy = screenHeight / 2
+
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                    if (state == GameState.MENU) {
+                        val btnRect = RectF(cx - 160f, cy + 40f, cx + 160f, cy + 120f)
+                        if (btnRect.contains(x, y)) {
+                            startGame()
+                            return true
+                        }
+                    } else if (state == GameState.GAMEOVER) {
+                        val btnRect = RectF(cx - 140f, cy + 60f, cx + 140f, cy + 130f)
+                        if (btnRect.contains(x, y)) {
+                            startGame()
+                            return true
+                        }
+                    } else {
+                        controls.handleTouchDown(x, y)
                     }
-                } else if (state == GameState.GAMEOVER) {
-                    val btnRect = RectF(screenWidth / 2 - 140f, screenHeight / 2 + 60f, screenWidth / 2 + 140f, screenHeight / 2 + 130f)
-                    if (btnRect.contains(x, y)) {
-                        startGame()
-                        return true
-                    }
-                } else {
-                    controls.handleTouchDown(x, y)
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                    controls.handleTouchUp(x, y)
                 }
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
-                controls.handleTouchUp(x, y)
-            }
+        } catch (t: Throwable) {
+            Log.e("AstranomiaGameView", "onTouchEvent error", t)
         }
         return true
     }
 
     fun onPause() {
-        soundManager.stopMusic()
-        controls.resetTouches()
-        if (state == GameState.PLAYING) state = GameState.PAUSED
+        try {
+            soundManager.stopMusic()
+            controls.resetTouches()
+            if (state == GameState.PLAYING) state = GameState.PAUSED
+        } catch (t: Throwable) {
+            Log.e("AstranomiaGameView", "onPause error", t)
+        }
     }
 
     fun onResume() {
-        if (state == GameState.PLAYING) soundManager.startGameMusic()
-        else if (state == GameState.MENU) soundManager.startMenuMusic()
+        try {
+            if (state == GameState.PLAYING) soundManager.startGameMusic()
+            else if (state == GameState.MENU) soundManager.startMenuMusic()
+        } catch (t: Throwable) {
+            Log.e("AstranomiaGameView", "onResume error", t)
+        }
     }
 
     fun onDestroy() {
-        soundManager.release()
+        try {
+            soundManager.release()
+        } catch (t: Throwable) {
+            Log.e("AstranomiaGameView", "onDestroy error", t)
+        }
     }
 }
