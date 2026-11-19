@@ -33,7 +33,10 @@
 * **Синтезатор звука на Android:** [`SoundManager.kt`](./app/src/main/kotlin/com/astranomia/game/audio/SoundManager.kt) (тема «Astronomia» в меню, Агро-Фонк с 808-м басом и ковбеллами в игре).
 * **Тактильная отдача (Haptics):** [`HapticManager.kt`](./app/src/main/kotlin/com/astranomia/game/haptics/HapticManager.kt) (вибрация при давке пришельцев и дрифте).
 * **Сборка проекта:**
-  * **Автоматически на GitHub:** Настроен GitHub Actions workflow [`.github/workflows/build-apk.yml`](./.github/workflows/build-apk.yml). При каждом пуше или ручном запуске в GitHub Actions автоматически собирается APK (`app-debug.apk`) и прикрепляется в артефакты сборки.
+  * **Автоматически на GitHub (CI/CD):** В репозитории настроен GitHub Actions workflow [`.github/workflows/build-apk.yml`](./.github/workflows/build-apk.yml). При каждом пуше проект автоматически компилируется на виртуальной машине Ubuntu с Android SDK/JDK 17/Gradle.
+  * **Где скачать готовый APK на GitHub:**
+    1. **GitHub Releases:** В разделе [Releases](https://github.com/vetos26/astronomia/releases) прикреплён файл `app-debug.apk` для прямой загрузки на Android.
+    2. **GitHub Actions Artifacts:** Во вкладке [Actions](https://github.com/vetos26/astronomia/actions) в каждом успешном запуске воркфлоу доступен архив артефакта `astranomia-debug-apk`.
   * **Локально в Android Studio:** Откройте корень репозитория в **Android Studio** и запустите на эмуляторе или Android-смартфоне (`./gradlew assembleDebug`).
 
 ---
