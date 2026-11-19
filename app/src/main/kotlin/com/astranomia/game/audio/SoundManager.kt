@@ -51,7 +51,6 @@ class SoundManager {
                         .build()
                 )
                 .setBufferSizeInBytes(minBufSize * 2)
-                .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
 
             if (audioTrack?.state == AudioTrack.STATE_INITIALIZED) {
@@ -230,7 +229,7 @@ class SoundManager {
             if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
                 track.play()
             }
-            track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
+            track.write(samples, 0, samples.size)
         } catch (t: Throwable) {
             Log.e("SoundManager", "writeAudio error", t)
         }
