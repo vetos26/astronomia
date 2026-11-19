@@ -1,0 +1,11 @@
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="don_red">#FFC2410C</color>
+    <color name="don_red_dark">#FF7C2D12</color>
+    <color name="gold">#FFFFCC00</color>
+    <color name="neon_blue">#FF38BDF8</color>
+    <color name="neon_purple">#FFA855F7</color>
+    <color name="alien_green">#FF22C55E</color>
+    <color name="night_field">#FF142010</color>
+</resources>

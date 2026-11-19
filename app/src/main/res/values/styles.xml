@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.Astranomia.Fullscreen" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:keepScreenOn">true</item>
+        <item name="android:windowBackground">@color/night_field</item>
+    </style>
+</resources>

@@ -22,7 +22,21 @@
 
 ---
 
-## 🎮 Игра «Astranomia» в 2D Мультяшном Стиле (Playable)
+## 📱 Android-версия игры на Kotlin (Android Studio Project)
+В репозитории создан полноценный проект под **Android на Kotlin 2.0+**:
+* **Точка входа:** [`MainActivity.kt`](./app/src/main/kotlin/com/astranomia/game/MainActivity.kt)
+* **Игровой движок (Canvas / SurfaceView 60 FPS):** [`AstranomiaGameView.kt`](./app/src/main/kotlin/com/astranomia/game/view/AstranomiaGameView.kt)
+* **Сенсорные контроллеры и HUD:** [`VirtualControls.kt`](./app/src/main/kotlin/com/astranomia/game/ui/VirtualControls.kt)
+  * Крестовина слева (▲, ▼, ◄, ►);
+  * Кнопки «ОГОНЬ», «ПЕРЕЗАРЯДКА», «СУПЕР ОРУЖИЕ» справа;
+  * Верхний левый HUD: кнопка меню, значок комбайна, шкала HP и счёт над ней.
+* **Синтезатор звука на Android:** [`SoundManager.kt`](./app/src/main/kotlin/com/astranomia/game/audio/SoundManager.kt) (тема «Astronomia» в меню, Агро-Фонк с 808-м басом и ковбеллами в игре).
+* **Тактильная отдача (Haptics):** [`HapticManager.kt`](./app/src/main/kotlin/com/astranomia/game/haptics/HapticManager.kt) (вибрация при давке пришельцев и дрифте).
+* **Сборка проекта:** Откройте корень репозитория в **Android Studio** и запустите на эмуляторе или Android-смартфоне (`./gradlew assembleDebug`).
+
+---
+
+## 🎮 Игра «Astranomia» в 2D Мультяшном Стиле (Playable Web Preview)
 В проекте реализована и запущена полноценная игра с яркой 2D-мультяшной графикой:
 * **Красный комбайн «ДОН-1500А»:** Вращающаяся жатка-мясорубка, дым из труб, белая надпись на борту и анимированный Дед Макар в шапке-ушанке с красной звездой в кабине.
 * **Пришельцы и НЛО:** Летающие тарелки тянут тыквы и картофель фиолетовыми лучами; зелёные пришельцы-пехотинцы выкапывают овощи; комбайн давит их со звуками мультяшного сплаттера!

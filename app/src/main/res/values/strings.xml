@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">ASTRANOMIA</string>
+    <string name="menu_title">ASTRANOMIA</string>
+    <string name="menu_subtitle">БИТВА ЗА УРОЖАЙ НА ДОН-1500А</string>
+    <string name="start_game">НАЧАТЬ ЖАТВУ</string>
+    <string name="btn_menu">МЕНЮ</string>
+    <string name="btn_fire">ОГОНЬ</string>
+    <string name="btn_reload">ПЕРЕЗАРЯДКА</string>
+    <string name="btn_super">СУПЕР ОРУЖИЕ</string>
+    <string name="score_label">ОЧКИ</string>
+    <string name="hp_label">HP</string>
+    <string name="crop_label">УРОЖАЙ</string>
+    <string name="game_over_title">ЖАТВА ОКОНЧЕНА</string>
+    <string name="game_over_victory">УРОЖАЙ СПАСЕН!</string>
+    <string name="retry">ЕЩЕ ОДИН ЗАЕЗД</string>
+</resources>
